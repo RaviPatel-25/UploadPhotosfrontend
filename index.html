@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>Base64 Image Upload to Supabase</title>
+  <title>Upload Image to Supabase Storage</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
@@ -10,7 +10,7 @@
 <body class="bg-gray-100 text-gray-800">
 
   <div class="max-w-xl mx-auto mt-10 p-6 bg-white rounded-xl shadow">
-    <h1 class="text-2xl font-bold text-center text-blue-600 mb-4">📷 Upload Base64 Image to Supabase</h1>
+    <h1 class="text-2xl font-bold text-center text-blue-600 mb-4">📤 Upload Image to Supabase Storage</h1>
 
     <input
       type="file"
@@ -22,13 +22,13 @@
     />
 
     <button
-      onclick="uploadBase64Image()"
+      onclick="uploadImageDirectly()"
       class="w-full py-2 px-4 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
     >
-      Upload to Supabase
+      Upload to Storage
     </button>
 
-    <h2 class="text-lg font-semibold mt-6">Latest Uploaded Image:</h2>
+    <h2 class="text-lg font-semibold mt-6">Uploaded Image:</h2>
     <div id="imageContainer" class="mt-4 space-y-4"></div>
   </div>
 
@@ -38,54 +38,37 @@
       'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImloaGR5ZGl4aWJhb21oZHpvb2xtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTIzMDMwNzcsImV4cCI6MjA2Nzg3OTA3N30.OlvMinSc4NNedFnaGQunjEUDu0PH1kh7XofBV4JcDUw'
     );
 
-    async function uploadBase64Image() {
+    async function uploadImageDirectly() {
       const fileInput = document.getElementById('fileInput');
       const file = fileInput.files[0];
       if (!file) return alert("Please select an image");
 
-      const reader = new FileReader();
-      reader.onload = async () => {
-        const base64String = reader.result;
+      const filePath = `images/${Date.now()}_${file.name}`; // folder + unique filename
 
-        const { error } = await supabase
-          .from('images') // make sure this table exists with a 'base64' column (text)
-          .insert([{ name: file.name, base64: base64String }]);
+      const { error } = await supabase
+        .storage
+        .from('images') // bucket name
+        .upload(filePath, file);
 
-        if (error) {
-          alert("Upload failed: " + error.message);
-          console.error(error);
-        } else {
-          alert("✅ Image saved to Supabase!");
-          loadLatestImage();
-        }
-      };
+      if (error) {
+        alert("Upload failed: " + error.message);
+        console.error(error);
+        return;
+      }
 
-      reader.readAsDataURL(file); // outputs base64 data URI
-    }
-
-    async function loadLatestImage() {
-      const { data, error } = await supabase
+      // Get public URL
+      const { data: { publicUrl } } = supabase
+        .storage
         .from('images')
-        .select('*')
-        .order('id', { ascending: false })
-        .limit(1);
+        .getPublicUrl(filePath);
 
+      // Display image
       const container = document.getElementById('imageContainer');
-      container.innerHTML = '';
-
-      if (error) return console.error("Fetch failed:", error);
-
-      data.forEach((img) => {
-        const image = document.createElement('img');
-        image.src = img.base64;
-        image.alt = img.name;
-        image.className = 'rounded shadow max-w-full';
-        container.appendChild(image);
-      });
+      container.innerHTML = `
+        <img src="${publicUrl}" class="rounded-lg shadow max-w-full">
+        <p class="mt-2 text-sm break-all">${publicUrl}</p>
+      `;
     }
-
-    // Load latest on page load
-    loadLatestImage();
   </script>
 </body>
 </html>
