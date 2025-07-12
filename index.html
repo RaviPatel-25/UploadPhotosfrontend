@@ -2,116 +2,90 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Image Upload & Download</title>
+  <title>Base64 Image Upload to Supabase</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
 <body class="bg-gray-100 text-gray-800">
 
   <div class="max-w-xl mx-auto mt-10 p-6 bg-white rounded-xl shadow">
-    <h1 class="text-2xl font-bold text-center text-blue-600 mb-4">📤 Upload & Download Images</h1>
+    <h1 class="text-2xl font-bold text-center text-blue-600 mb-4">📷 Upload Base64 Image to Supabase</h1>
 
     <input
       type="file"
       id="fileInput"
-      multiple
       accept="image/*"
       class="block w-full mb-4 text-sm text-gray-500 file:mr-4 file:py-2 file:px-4
-             file:rounded-full file:border-0
-             file:text-sm file:font-semibold
+             file:rounded-full file:border-0 file:text-sm file:font-semibold
              file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
     />
 
     <button
-      onclick="uploadFiles()"
-      id="uploadBtn"
-      class="w-full py-2 px-4 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
+      onclick="uploadBase64Image()"
+      class="w-full py-2 px-4 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
     >
-      Upload Selected
+      Upload to Supabase
     </button>
 
-    <h2 class="text-lg font-semibold mt-6">Uploaded Images:</h2>
-    <ul id="fileList" class="mt-3 space-y-3"></ul>
+    <h2 class="text-lg font-semibold mt-6">Latest Uploaded Image:</h2>
+    <div id="imageContainer" class="mt-4 space-y-4"></div>
   </div>
 
   <script>
-    const backendURL = 'https://uploadphotos-44c5.onrender.com';
-    const fileInput = document.getElementById('fileInput');
-    const fileList = document.getElementById('fileList');
-    const uploadBtn = document.getElementById('uploadBtn');
+    const supabase = supabase.createClient(
+      'https://ihhdydixibaomhdzoolm.supabase.co',
+      'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImloaGR5ZGl4aWJhb21oZHpvb2xtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTIzMDMwNzcsImV4cCI6MjA2Nzg3OTA3N30.OlvMinSc4NNedFnaGQunjEUDu0PH1kh7XofBV4JcDUw'
+    );
 
-    async function uploadFiles() {
-      const files = fileInput.files;
-      if (!files.length) {
-        alert("Please select at least one image");
-        return;
-      }
+    async function uploadBase64Image() {
+      const fileInput = document.getElementById('fileInput');
+      const file = fileInput.files[0];
+      if (!file) return alert("Please select an image");
 
-      uploadBtn.disabled = true;
+      const reader = new FileReader();
+      reader.onload = async () => {
+        const base64String = reader.result;
 
-      for (const file of files) {
-        const formData = new FormData();
-        formData.append('image', file);
+        const { error } = await supabase
+          .from('images') // make sure this table exists with a 'base64' column (text)
+          .insert([{ name: file.name, base64: base64String }]);
 
-        try {
-          const res = await fetch(`${backendURL}/upload`, {
-            method: 'POST',
-            body: formData,
-          });
-
-          const data = await res.json();
-          if (data.filename) {
-            const li = document.createElement('li');
-            li.className = "flex items-center justify-between bg-gray-100 px-4 py-2 rounded-md border";
-            li.innerHTML = `
-              <span class="truncate max-w-[60%]">${data.filename}</span>
-              <button
-                class="bg-green-500 text-white px-3 py-1 rounded hover:bg-green-600"
-                onclick="downloadFile('${data.filename}', this)"
-              >
-                Download
-              </button>
-            `;
-            fileList.appendChild(li);
-          }
-        } catch (err) {
-          alert("Upload failed for: " + file.name);
-          console.error(err);
+        if (error) {
+          alert("Upload failed: " + error.message);
+          console.error(error);
+        } else {
+          alert("✅ Image saved to Supabase!");
+          loadLatestImage();
         }
-      }
+      };
 
-      fileInput.value = '';
-      uploadBtn.disabled = false;
+      reader.readAsDataURL(file); // outputs base64 data URI
     }
 
-    async function downloadFile(filename, button) {
-      try {
-        const res = await fetch(`${backendURL}/download/${filename}`);
-        if (!res.ok) throw new Error("Download failed");
+    async function loadLatestImage() {
+      const { data, error } = await supabase
+        .from('images')
+        .select('*')
+        .order('id', { ascending: false })
+        .limit(1);
 
-        const blob = await res.blob();
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = filename;
-        document.body.appendChild(a);
-        a.click();
-        a.remove();
-        URL.revokeObjectURL(url);
+      const container = document.getElementById('imageContainer');
+      container.innerHTML = '';
 
-        // Mark as deleted
-        button.disabled = true;
-        button.textContent = '🗑️ Deleted';
-        button.classList.remove('bg-green-500', 'hover:bg-green-600');
-        button.classList.add('bg-red-500');
-      } catch (err) {
-        alert("❌ Already downloaded or error occurred.");
-        console.error(err);
-        button.disabled = true;
-        button.textContent = '🗑️ Deleted';
-      }
+      if (error) return console.error("Fetch failed:", error);
+
+      data.forEach((img) => {
+        const image = document.createElement('img');
+        image.src = img.base64;
+        image.alt = img.name;
+        image.className = 'rounded shadow max-w-full';
+        container.appendChild(image);
+      });
     }
+
+    // Load latest on page load
+    loadLatestImage();
   </script>
-
 </body>
 </html>
